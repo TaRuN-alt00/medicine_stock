@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { UserProfile, UserRole, Chemist } from "./types";
 import { DEMO_CHEMISTS } from "./seed-data";
+import { db } from "./db";
 
 export interface AdminCredentials {
   email: string;
@@ -15,6 +16,13 @@ export interface ChemistCredentials {
   pin: string;
 }
 
+export interface ChemistLoginResult {
+  success: boolean;
+  status?: "pending" | "verified" | "rejected" | "suspended" | "not_found";
+  message?: string;
+  chemist?: Chemist;
+}
+
 interface AuthContextType {
   user: UserProfile | null;
   activeChemist: Chemist | null;
@@ -25,7 +33,8 @@ interface AuthContextType {
   updateAdminCredentials: (creds: AdminCredentials) => void;
   updateChemistCredentials: (creds: ChemistCredentials) => void;
   loginAsCustomer: (phone?: string) => void;
-  loginAsChemist: (chemistId?: string) => void;
+  loginAsChemist: (chemistId: string) => void;
+  loginChemistWithCredentials: (phone: string, pin: string) => ChemistLoginResult;
   loginAsAdmin: () => void;
   logout: () => void;
   sendOtp: (phone: string) => Promise<{ success: boolean; demoCode: string }>;
@@ -58,6 +67,7 @@ const AuthContext = createContext<AuthContextType>({
   updateChemistCredentials: () => {},
   loginAsCustomer: () => {},
   loginAsChemist: () => {},
+  loginChemistWithCredentials: () => ({ success: false, message: "Not initialized" }),
   loginAsAdmin: () => {},
   logout: () => {},
   sendOtp: async () => ({ success: true, demoCode: "123456" }),
@@ -70,16 +80,25 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [chemists, setChemists] = useState<Chemist[]>(DEMO_CHEMISTS);
-  const [activeChemistId, setActiveChemistId] = useState<string>("chem_1");
+  const [chemists, setChemists] = useState<Chemist[]>([]);
+  const [activeChemistId, setActiveChemistId] = useState<string>("");
   const [adminCredentials, setAdminCredentialsState] = useState<AdminCredentials>(defaultAdminCreds);
   const [chemistCredentials, setChemistCredentialsState] = useState<ChemistCredentials>(defaultChemCreds);
+
+  // Sync chemists from DB
+  useEffect(() => {
+    const syncChemists = () => {
+      setChemists(db.getChemists());
+    };
+    syncChemists();
+    const unsub = db.subscribe(syncChemists);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     // Restore session from localStorage if present
     const savedUser = localStorage.getItem("msf_user");
     const savedChemistId = localStorage.getItem("msf_active_chemist_id");
-    const savedChemists = localStorage.getItem("msf_chemists");
     const savedAdminCreds = localStorage.getItem("msf_admin_creds");
     const savedChemCreds = localStorage.getItem("msf_chem_creds");
 
@@ -93,14 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setChemistCredentialsState(JSON.parse(savedChemCreds));
       } catch {}
-    }
-
-    if (savedChemists) {
-      try {
-        setChemists(JSON.parse(savedChemists));
-      } catch {
-        setChemists(DEMO_CHEMISTS);
-      }
     }
 
     if (savedUser) {
@@ -125,7 +136,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const activeChemist = chemists.find((c) => c.id === activeChemistId) || chemists[0];
+  // Only return active chemist if currently logged in with chemist role
+  const activeChemist: Chemist | null =
+    user?.role === "chemist"
+      ? chemists.find((c) => c.userId === user.uid || c.id === activeChemistId) || null
+      : null;
 
   const loginAsCustomer = (phone: string = "9876543210") => {
     const customerUser: UserProfile = {
@@ -139,8 +154,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveUserSession(customerUser);
   };
 
-  const loginAsChemist = (chemistId: string = "chem_1") => {
-    const chemist = chemists.find((c) => c.id === chemistId) || chemists[0];
+  const loginAsChemist = (chemistId: string) => {
+    const chemist = db.getChemistById(chemistId);
+    if (!chemist) return;
+
     setActiveChemistId(chemist.id);
     localStorage.setItem("msf_active_chemist_id", chemist.id);
 
@@ -155,11 +172,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveUserSession(chemistUser);
   };
 
+  const loginChemistWithCredentials = (phone: string, pin: string): ChemistLoginResult => {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const allChemists = db.getChemists();
+    const chem = allChemists.find((c) => c.phone.replace(/\D/g, "") === cleanPhone);
+
+    if (!chem) {
+      return {
+        success: false,
+        status: "not_found",
+        message: "No pharmacy found with this mobile number. Please register your shop first.",
+      };
+    }
+
+    const expectedPin = chem.pin || "123456";
+    if (pin.trim() !== expectedPin) {
+      return {
+        success: false,
+        message: "Incorrect PIN/Password. Please enter the valid 6-digit PIN used during registration.",
+      };
+    }
+
+    if (chem.status === "pending") {
+      return {
+        success: false,
+        status: "pending",
+        chemist: chem,
+        message: `Verification Pending: "${chem.shopName}" is awaiting administrative approval in the Drug Controller queue. You will be able to access the counter terminal once verified.`,
+      };
+    }
+
+    if (chem.status === "rejected") {
+      return {
+        success: false,
+        status: "rejected",
+        chemist: chem,
+        message: `Registration Rejected: ${chem.rejectionReason || "Drug licence verification failed"}. Contact Admin for review.`,
+      };
+    }
+
+    // Success - Verified Chemist!
+    setActiveChemistId(chem.id);
+    localStorage.setItem("msf_active_chemist_id", chem.id);
+    const chemistUser: UserProfile = {
+      uid: chem.userId,
+      role: "chemist",
+      phone: chem.phone,
+      name: chem.ownerName,
+      preferredLanguage: "en",
+      createdAt: chem.createdAt,
+    };
+    saveUserSession(chemistUser);
+    return {
+      success: true,
+      status: "verified",
+      chemist: chem,
+    };
+  };
+
   const loginAsAdmin = () => {
     const adminUser: UserProfile = {
       uid: "admin_super",
       role: "admin",
-      email: "admin@medicinestock.in",
+      email: adminCredentials.email,
       name: "Lead System Admin",
       preferredLanguage: "en",
       createdAt: new Date().toISOString(),
@@ -169,6 +244,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     saveUserSession(null);
+    localStorage.removeItem("msf_active_chemist_id");
+    setActiveChemistId("");
   };
 
   const updateAdminCredentials = (creds: AdminCredentials) => {
@@ -182,7 +259,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendOtp = async (phone: string) => {
-    // In dev / test, deterministic fast OTP code 123456
     return { success: true, demoCode: chemistCredentials.pin || "123456" };
   };
 
@@ -190,7 +266,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const validCode = code === "123456" || code === chemistCredentials.pin || code.length === 6;
     if (validCode) {
       if (targetRole === "chemist") {
-        loginAsChemist("chem_1");
+        const found = db.getChemistByPhone(phone);
+        if (found) {
+          loginAsChemist(found.id);
+        }
       } else {
         loginAsCustomer(phone);
       }
@@ -206,7 +285,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       code === adminCredentials.twoFactorCode;
 
     const matchesFallback =
-      password === "Admin@Secure2026" && (code === "123456" || code.length === 6);
+      email.trim().toLowerCase() === "admin@medicinestock.in" &&
+      password === "Admin@Secure2026" &&
+      (code === "123456" || code.length === 6);
 
     if (matchesCustom || matchesFallback) {
       loginAsAdmin();
@@ -216,29 +297,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const toggleChemistOpen = () => {
-    setChemists((prev) => {
-      const updated = prev.map((c) => {
-        if (c.id === activeChemist.id) {
-          return { ...c, openNow: !c.openNow };
-        }
-        return c;
-      });
-      localStorage.setItem("msf_chemists", JSON.stringify(updated));
-      return updated;
-    });
+    if (!activeChemist) return;
+    db.toggleChemistOpen(activeChemist.id);
   };
 
   const updateChemist = (updatedFields: Partial<Chemist>) => {
-    setChemists((prev) => {
-      const updated = prev.map((c) => {
-        if (c.id === activeChemist.id) {
-          return { ...c, ...updatedFields };
-        }
-        return c;
-      });
-      localStorage.setItem("msf_chemists", JSON.stringify(updated));
-      return updated;
-    });
+    if (!activeChemist) return;
+    const existing = db.getChemistById(activeChemist.id);
+    if (existing) {
+      const merged = { ...existing, ...updatedFields };
+      db.addChemist(merged);
+    }
   };
 
   const deleteAccount = async () => {
@@ -260,6 +329,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateChemistCredentials,
         loginAsCustomer,
         loginAsChemist,
+        loginChemistWithCredentials,
         loginAsAdmin,
         logout,
         sendOtp,

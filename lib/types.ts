@@ -45,6 +45,8 @@ export interface Chemist {
   longitude: number;
   geohash: string;
   metrics: ChemistMetrics;
+  pin?: string;
+  isSynthetic?: boolean;
   createdAt: string;
 }
 

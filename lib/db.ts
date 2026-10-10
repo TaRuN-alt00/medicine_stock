@@ -52,7 +52,7 @@ class DatabaseStore {
   private loadFromStorage() {
     try {
       const savedChemists = localStorage.getItem("msf_chemists");
-      if (savedChemists && savedChemists.trim().length > 1) {
+      if (savedChemists !== null) {
         try { this.chemists = JSON.parse(savedChemists); } catch {}
       }
 
@@ -117,6 +117,38 @@ class DatabaseStore {
 
   public getChemistById(id: string): Chemist | undefined {
     return this.chemists.find((c) => c.id === id);
+  }
+
+  public getChemistByPhone(phone: string): Chemist | undefined {
+    return this.chemists.find((c) => c.phone.replace(/\D/g, "") === phone.replace(/\D/g, ""));
+  }
+
+  public addChemist(chemist: Chemist, adminEmail: string = "system") {
+    // Avoid duplicate IDs
+    this.chemists = this.chemists.filter((c) => c.id !== chemist.id);
+    this.chemists.unshift(chemist);
+    this.addAuditLog(adminEmail, `Enrolled pharmacy shop: ${chemist.shopName} (${chemist.drugLicenceNumber})`, "chemist", chemist.id);
+    this.persist();
+  }
+
+  public deleteChemist(id: string, adminEmail: string = "admin@medicinestock.in") {
+    const chem = this.chemists.find((c) => c.id === id);
+    this.chemists = this.chemists.filter((c) => c.id !== id);
+    this.addAuditLog(adminEmail, `Deleted pharmacy shop: ${chem?.shopName || id}`, "chemist", id);
+    this.persist();
+  }
+
+  public clearSyntheticChemists(adminEmail: string = "admin@medicinestock.in") {
+    const countBefore = this.chemists.length;
+    this.chemists = this.chemists.filter((c) => !c.isSynthetic && !["chem_1", "chem_2", "chem_3", "chem_4", "chem_5"].includes(c.id));
+    this.addAuditLog(adminEmail, `Cleared sample synthetic shops (${countBefore - this.chemists.length} removed)`, "chemist", "all");
+    this.persist();
+  }
+
+  public resetToSampleChemists(adminEmail: string = "admin@medicinestock.in") {
+    this.chemists = [...DEMO_CHEMISTS];
+    this.addAuditLog(adminEmail, "Restored default sample chemist dataset", "chemist", "all");
+    this.persist();
   }
 
   public updateChemistStatus(id: string, status: Chemist["status"], adminEmail: string, reason?: string) {

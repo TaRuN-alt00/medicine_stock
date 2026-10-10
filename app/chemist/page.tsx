@@ -16,13 +16,48 @@ import {
   ShieldCheck,
   RotateCcw,
   AlertCircle,
-  HelpCircle,
+  LogIn,
+  UserPlus,
+  LogOut,
+  Sparkles,
+  MapPin,
+  FileText,
+  KeyRound,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function ChemistPortalPage() {
-  const { user, role, activeChemist, toggleChemistOpen, loginAsChemist } = useAuth();
+  const {
+    user,
+    role,
+    activeChemist,
+    toggleChemistOpen,
+    loginChemistWithCredentials,
+    logout,
+  } = useAuth();
   const { t } = useI18n();
 
+  // Auth gate tabs: "login" | "register"
+  const [gateTab, setGateTab] = useState<"login" | "register">("login");
+
+  // Login form state
+  const [loginPhone, setLoginPhone] = useState("");
+  const [loginPin, setLoginPin] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [pendingNotice, setPendingNotice] = useState<string | null>(null);
+
+  // Register form state
+  const [regShopName, setRegShopName] = useState("");
+  const [regOwnerName, setRegOwnerName] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regLicence, setRegLicence] = useState("");
+  const [regPin, setRegPin] = useState("");
+  const [regAddress, setRegAddress] = useState("");
+  const [regTown, setRegTown] = useState("Meerut");
+  const [regIs24Hours, setRegIs24Hours] = useState(false);
+  const [regSuccessMessage, setRegSuccessMessage] = useState<string | null>(null);
+
+  // Terminal active states
   const [incomingRequests, setIncomingRequests] = useState<MedicineRequest[]>([]);
   const [undoToast, setUndoToast] = useState<{ id: string; seconds: number; requestId: string } | null>(null);
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
@@ -41,45 +76,12 @@ export default function ChemistPortalPage() {
     }
   };
 
-  // Keep incoming requests in sync with DB
+  // Keep incoming requests in sync with DB for active chemist
   useEffect(() => {
     if (!activeChemist) return;
 
     const updateRequests = () => {
-      // Find incoming requests routed to this chemist
-      let reqs = db.getIncomingRequestsForChemist(activeChemist.id);
-
-      // If no live requests in memory yet, create a realistic seeded inquiry for demonstration
-      if (reqs.length === 0) {
-        reqs = [
-          {
-            id: "req_demo_1",
-            customerId: "cust_demo",
-            medicineQuery: "Dolo 650",
-            matchedMedicine: {
-              id: "med_1",
-              brandName: "Dolo 650",
-              saltComposition: "Paracetamol 650mg",
-              strength: "650mg",
-              form: "tablet",
-              schedule: "OTC",
-              prescriptionRequired: false,
-              synonyms: ["dolo", "paracetamol"],
-              searchTokens: ["dolo", "650"],
-            },
-            coarseLat: 28.986,
-            coarseLng: 77.708,
-            geohash: "ttp4ec",
-            localityName: "Near Clock Tower Chowk",
-            radiusKm: 3,
-            status: "open",
-            createdAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 12 * 60 * 1000).toISOString(),
-            patientOutcome: "unrecorded",
-            notifiedChemistIds: [activeChemist.id],
-          },
-        ];
-      }
+      const reqs = db.getIncomingRequestsForChemist(activeChemist.id);
       if (reqs.length > 0) {
         playChemistAlertSound();
       }
@@ -104,6 +106,70 @@ export default function ChemistPortalPage() {
     return () => clearInterval(timer);
   }, [undoToast]);
 
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setPendingNotice(null);
+
+    if (!loginPhone || !loginPin) {
+      setLoginError("Please enter both phone number and 6-digit PIN.");
+      return;
+    }
+
+    const res = loginChemistWithCredentials(loginPhone, loginPin);
+    if (!res.success) {
+      if (res.status === "pending") {
+        setPendingNotice(res.message || "Your pharmacy registration is pending administrative review in /admin.");
+      } else {
+        setLoginError(res.message || "Failed to log in.");
+      }
+    }
+  };
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regShopName || !regOwnerName || !regPhone || !regLicence || !regAddress) {
+      alert("Please fill all required fields");
+      return;
+    }
+
+    const newChemistId = "chem_" + Date.now();
+    const newChemist: Chemist = {
+      id: newChemistId,
+      userId: "user_" + newChemistId,
+      shopName: regShopName.trim(),
+      ownerName: regOwnerName.trim(),
+      phone: regPhone.trim(),
+      pin: regPin.trim() || "123456",
+      isSynthetic: false,
+      drugLicenceNumber: regLicence.trim(),
+      address: regAddress.trim(),
+      town: regTown.trim(),
+      status: "pending",
+      openNow: true,
+      hours: {
+        open: "09:00",
+        close: "22:00",
+        is24Hours: regIs24Hours,
+      },
+      latitude: 28.985 + (Math.random() * 0.01 - 0.005),
+      longitude: 77.708 + (Math.random() * 0.01 - 0.005),
+      geohash: "ttp4ec",
+      metrics: { replyRate: 100, avgReplyTimeSeconds: 25, confirmedObtainedRate: 100, consecutiveMisses: 0 },
+      createdAt: new Date().toISOString(),
+    };
+
+    // Save chemist to DB with pending status
+    db.addChemist(newChemist, "portal-registration");
+
+    setRegSuccessMessage(
+      `Shop "${newChemist.shopName}" enrolled! Your request has been sent to the Admin Verification Queue. Once the admin approves your Drug Licence (${newChemist.drugLicenceNumber}) at /admin, you can log in with phone: ${newChemist.phone} and your PIN.`
+    );
+    // Pre-fill login
+    setLoginPhone(newChemist.phone);
+    setLoginPin(newChemist.pin || "123456");
+  };
+
   const handleReply = (requestId: string, answer: "yes" | "no") => {
     if (!activeChemist) return;
 
@@ -120,7 +186,6 @@ export default function ChemistPortalPage() {
       requestId,
     });
 
-    // Remove from local list optimistically
     setIncomingRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
@@ -131,25 +196,328 @@ export default function ChemistPortalPage() {
     setLastAnswer(null);
   };
 
+  const sendTestInquiry = () => {
+    if (!activeChemist) return;
+    db.createRequest({
+      customerId: "cust_test_" + Date.now(),
+      medicineQuery: "Augmentin 625 Duo",
+      matchedMedicine: {
+        id: "med_test",
+        brandName: "Augmentin 625 Duo",
+        saltComposition: "Amoxicillin 500mg + Clavulanic Acid 125mg",
+        strength: "625mg",
+        form: "tablet",
+        schedule: "H",
+        prescriptionRequired: true,
+        synonyms: ["augmentin", "amoxicillin"],
+        searchTokens: ["augmentin", "625"],
+      },
+      coarseLat: activeChemist.latitude,
+      coarseLng: activeChemist.longitude,
+      geohash: activeChemist.geohash,
+      localityName: `${activeChemist.town} Market`,
+      radiusKm: 3,
+    });
+  };
+
+  // GATE SCREEN: If not logged in as a verified chemist
   if (!activeChemist || role !== "chemist") {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 card-base bg-surface text-center space-y-4">
-        <Store className="w-10 h-10 text-forest mx-auto" />
-        <h1 className="font-serif text-xl font-bold text-ink">Chemist Portal Access</h1>
-        <p className="text-xs text-ink-muted">
-          Please log in as a registered chemist or use the quick demo button below.
-        </p>
-        <button
-          onClick={() => loginAsChemist("chem_1")}
-          className="btn-base btn-forest w-full text-sm font-semibold"
-        >
-          Login as Demo Chemist (Sharma Medicos)
-        </button>
+      <div className="max-w-xl mx-auto my-10 px-4 space-y-6">
+        {/* Header Title */}
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-btn bg-forest text-white flex items-center justify-center mx-auto shadow-sm">
+            <Store className="w-6 h-6" />
+          </div>
+          <h1 className="font-serif text-2xl md:text-3xl font-bold text-ink">
+            Chemist Counter Terminal
+          </h1>
+          <p className="text-xs text-ink-muted max-w-md mx-auto">
+            Log in to receive audible stock inquiry alerts from neighbourhood patients, or register your licensed pharmacy.
+          </p>
+        </div>
+
+        {/* Tab Toggle: Login vs Register */}
+        <div className="card-base p-1 bg-paper border border-stone grid grid-cols-2 text-xs font-semibold">
+          <button
+            onClick={() => {
+              setGateTab("login");
+              setLoginError(null);
+              setPendingNotice(null);
+            }}
+            className={`py-2 rounded-btn transition-colors flex items-center justify-center gap-1.5 ${
+              gateTab === "login"
+                ? "bg-surface text-forest shadow-sm"
+                : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Chemist Login (लॉगिन)</span>
+          </button>
+          <button
+            onClick={() => {
+              setGateTab("register");
+              setRegSuccessMessage(null);
+            }}
+            className={`py-2 rounded-btn transition-colors flex items-center justify-center gap-1.5 ${
+              gateTab === "register"
+                ? "bg-surface text-forest shadow-sm"
+                : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Register New Pharmacy (पंजीकरण)</span>
+          </button>
+        </div>
+
+        {/* TAB 1: CHEMIST LOGIN */}
+        {gateTab === "login" && (
+          <div className="card-base p-6 bg-surface border border-stone space-y-5">
+            {pendingNotice && (
+              <div className="p-4 bg-pending/10 border border-pending/30 rounded-card text-xs text-ink space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-pending">
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <span>Administrative Verification Pending</span>
+                </div>
+                <p className="leading-relaxed text-ink-muted">{pendingNotice}</p>
+                <p className="text-[11px] text-ink-muted font-medium">
+                  Tip: If you are testing, you can open the <span className="font-mono text-ink font-bold">/admin</span> portal in a separate tab to approve this pharmacy!
+                </p>
+              </div>
+            )}
+
+            {loginError && (
+              <div className="p-3 bg-unavailable/10 border border-unavailable/30 rounded-card text-xs text-unavailable flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">
+                  Registered Mobile Number *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={loginPhone}
+                  onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="10-digit mobile number"
+                  className="input-base w-full font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">
+                  6-Digit Password / PIN *
+                </label>
+                <input
+                  type="password"
+                  required
+                  maxLength={6}
+                  value={loginPin}
+                  onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="Enter 6-digit security PIN"
+                  className="input-base w-full font-mono text-sm tracking-widest"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn-base btn-forest w-full text-sm font-semibold py-3 flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Sign In to Terminal</span>
+              </button>
+            </form>
+
+            <div className="pt-2 border-t border-stone text-center">
+              <span className="text-xs text-ink-muted">
+                New retail chemist?{" "}
+                <button
+                  onClick={() => setGateTab("register")}
+                  className="text-forest font-semibold underline"
+                >
+                  Register your pharmacy here
+                </button>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: REGISTER NEW PHARMACY */}
+        {gateTab === "register" && (
+          <div className="card-base p-6 bg-surface border border-stone space-y-5">
+            {regSuccessMessage ? (
+              <div className="space-y-4 text-center py-4">
+                <CheckCircle2 className="w-12 h-12 text-available mx-auto" />
+                <h3 className="font-serif font-bold text-xl text-ink">Registration Submitted!</h3>
+                <p className="text-xs text-ink-muted leading-relaxed max-w-md mx-auto">
+                  {regSuccessMessage}
+                </p>
+                <div className="pt-2 flex justify-center">
+                  <button
+                    onClick={() => {
+                      setGateTab("login");
+                      setRegSuccessMessage(null);
+                    }}
+                    className="btn-base btn-forest text-xs px-6 py-2"
+                  >
+                    Go to Login & Check Status →
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="font-serif font-bold text-lg text-ink">Retail Pharmacy Enrollment</h3>
+                  <p className="text-xs text-ink-muted">
+                    Submit your pharmacy details for administrative verification (State Form 20/21).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">
+                      Pharmacy / Shop Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={regShopName}
+                      onChange={(e) => setRegShopName(e.target.value)}
+                      placeholder="e.g. Anand Medicos"
+                      className="input-base w-full text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">
+                      Pharmacist / Owner Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={regOwnerName}
+                      onChange={(e) => setRegOwnerName(e.target.value)}
+                      placeholder="e.g. Ramesh Chandra"
+                      className="input-base w-full text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">
+                      Mobile Number (For Inquiries) *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="10-digit number"
+                      className="input-base w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">
+                      Drug Licence Number *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={regLicence}
+                      onChange={(e) => setRegLicence(e.target.value)}
+                      placeholder="e.g. DL-UP-2026-99210"
+                      className="input-base w-full font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">
+                    Create 6-Digit Password / PIN *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    maxLength={6}
+                    value={regPin}
+                    onChange={(e) => setRegPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="Create 6-digit login PIN (e.g. 123456)"
+                    className="input-base w-full font-mono text-xs"
+                  />
+                  <span className="text-[11px] text-ink-muted">
+                    This will be required to log in to your counter terminal once approved.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">
+                    Shop Address *
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    value={regAddress}
+                    onChange={(e) => setRegAddress(e.target.value)}
+                    placeholder="Shop number, market, road..."
+                    className="input-base w-full text-xs"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">Town / City *</label>
+                    <input
+                      type="text"
+                      required
+                      value={regTown}
+                      onChange={(e) => setRegTown(e.target.value)}
+                      className="input-base w-full text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">Operating Hours</label>
+                    <div className="flex items-center gap-2 pt-2">
+                      <input
+                        type="checkbox"
+                        id="reg24Hours"
+                        checked={regIs24Hours}
+                        onChange={(e) => setRegIs24Hours(e.target.checked)}
+                        className="w-4 h-4 accent-forest"
+                      />
+                      <label htmlFor="reg24Hours" className="text-xs text-ink">
+                        Open 24 Hours
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-paper border border-stone rounded-btn text-xs text-ink-muted flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-forest shrink-0" />
+                  <span>
+                    Registration requests are reviewed by the Lead Verifier under Drugs & Cosmetics Act rules.
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-base btn-forest w-full text-sm font-semibold py-3"
+                >
+                  Submit Registration for Admin Approval
+                </button>
+              </form>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
-  // Pending verification view
+  // PENDING VERIFICATION SCREEN: If user is logged in but shop is pending
   if (activeChemist.status === "pending") {
     return (
       <div className="max-w-lg mx-auto my-12 p-8 card-base bg-surface text-center space-y-4 border-2 border-stone">
@@ -159,20 +527,18 @@ export default function ChemistPortalPage() {
           Your shop <strong>{activeChemist.shopName}</strong> (Licence: {activeChemist.drugLicenceNumber}) has been submitted for administrative review.
         </p>
         <div className="p-3 bg-paper rounded-btn text-xs text-ink-muted">
-          Our team inspects retail drug licence credentials within 24 hours. You cannot receive live inquiries until verified.
+          Our team verifies retail drug licence credentials within 24 hours. You cannot receive live inquiries until verified.
         </div>
-        <div className="pt-2">
-          <button
-            onClick={() => loginAsChemist("chem_1")}
-            className="btn-base btn-outline text-xs"
-          >
-            Switch to Verified Chemist Demo
+        <div className="pt-2 flex justify-center gap-3">
+          <button onClick={logout} className="btn-base btn-outline text-xs">
+            Log Out
           </button>
         </div>
       </div>
     );
   }
 
+  // ACTIVE VERIFIED TERMINAL SCREEN
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       {/* Chemist Header Bar */}
@@ -187,12 +553,12 @@ export default function ChemistPortalPage() {
           </div>
           <p className="text-xs text-ink-muted">
             {activeChemist.address}, {activeChemist.town} • Licence:{" "}
-            <span className="font-mono">{activeChemist.drugLicenceNumber}</span>
+            <span className="font-mono">{activeChemist.drugLicenceNumber}</span> • Owner: {activeChemist.ownerName}
           </p>
         </div>
 
-        {/* Open / Closed Toggle */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+        {/* Status Toggle & Logout */}
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <button
             onClick={toggleChemistOpen}
             className={`btn-base px-4 py-2 text-xs font-bold flex items-center gap-2 transition-all ${
@@ -205,6 +571,15 @@ export default function ChemistPortalPage() {
             <Power className="w-4 h-4" />
             <span>{activeChemist.openNow ? t("common.openNow") : t("common.closed")}</span>
           </button>
+
+          <button
+            onClick={logout}
+            className="btn-base btn-outline text-xs px-3 py-2 flex items-center gap-1 text-ink-muted hover:text-unavailable"
+            title="Log Out of this shop terminal"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
         </div>
       </div>
 
@@ -213,13 +588,13 @@ export default function ChemistPortalPage() {
         <div className="p-3.5 bg-paper border border-stone rounded-card text-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-ink">
             <Bell className="w-4 h-4 text-forest shrink-0" />
-            <span>Enable Web Push to receive audible alerts even when this browser tab is in the background.</span>
+            <span>Enable Web Audio & Notifications to receive sound alerts even when this tab is in background.</span>
           </div>
           <button
             onClick={requestNotificationPermission}
             className="btn-base btn-forest text-xs px-3 h-8 shrink-0"
           >
-            Enable Audio & Push
+            Enable Audio
           </button>
         </div>
       )}
@@ -242,7 +617,7 @@ export default function ChemistPortalPage() {
         </div>
       )}
 
-      {/* Core Screen: Incoming Requests (The Heart of Chemist Product) */}
+      {/* Core Screen: Incoming Inquiries */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -253,18 +628,29 @@ export default function ChemistPortalPage() {
               {incomingRequests.length}
             </span>
           </div>
-          <span className="text-xs text-ink-muted">
-            Auto-refreshes in real-time
-          </span>
+
+          <button
+            onClick={sendTestInquiry}
+            className="btn-base btn-outline text-xs px-3 py-1.5 flex items-center gap-1 font-semibold text-forest"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Simulate Test Inquiry</span>
+          </button>
         </div>
 
         {incomingRequests.length === 0 ? (
-          <div className="card-base p-10 bg-surface text-center space-y-2 border border-stone">
+          <div className="card-base p-10 bg-surface text-center space-y-3 border border-stone">
             <Clock className="w-8 h-8 text-ink-muted mx-auto" />
             <h3 className="font-serif font-bold text-base text-ink">No pending inquiries</h3>
             <p className="text-xs text-ink-muted max-w-sm mx-auto">
               You are all caught up. When a patient searches for medicine in your area, an alert will ring here.
             </p>
+            <button
+              onClick={sendTestInquiry}
+              className="btn-base btn-forest text-xs px-4 py-2 mt-2"
+            >
+              Test Alert Chime
+            </button>
           </div>
         ) : (
           <div className="space-y-4">

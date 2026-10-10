@@ -67,11 +67,10 @@ export function Navbar() {
 
           {/* Right actions: Role Quick Switcher, i18n, Auth */}
           <div className="flex items-center gap-2">
-            {/* Quick Role Switcher (Active Portal selector) */}
+            {/* Quick Portal Switcher (Customer & Chemist) */}
             <div className="hidden lg:flex items-center bg-paper p-1 rounded-btn border border-stone text-xs font-semibold">
               <Link
                 href="/"
-                onClick={() => loginAsCustomer()}
                 className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
                   role === "customer" || !role
                     ? "bg-surface text-forest shadow-sm"
@@ -83,7 +82,6 @@ export function Navbar() {
               </Link>
               <Link
                 href="/chemist"
-                onClick={() => loginAsChemist("chem_1")}
                 className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
                   role === "chemist"
                     ? "bg-surface text-forest shadow-sm"
@@ -92,18 +90,6 @@ export function Navbar() {
               >
                 <Store className="w-3.5 h-3.5" />
                 {t("common.chemist")}
-              </Link>
-              <Link
-                href="/admin"
-                onClick={() => loginAsAdmin()}
-                className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
-                  role === "admin"
-                    ? "bg-surface text-forest shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5" />
-                {t("common.admin")}
               </Link>
             </div>
 
@@ -158,42 +144,24 @@ export function Navbar() {
           <div className="md:hidden border-t border-stone bg-surface px-4 py-4 space-y-3">
             <div className="flex flex-col gap-2 pb-3 border-b border-stone">
               <span className="text-xs font-semibold text-ink-muted">{t("common.portal")}</span>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Link
                   href="/"
-                  onClick={() => {
-                    loginAsCustomer();
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={() => setMobileMenuOpen(false)}
                   className={`btn-base text-xs py-1.5 ${
-                    role === "customer" ? "btn-forest" : "btn-outline"
+                    role === "customer" || !role ? "btn-forest" : "btn-outline"
                   }`}
                 >
                   {t("common.customer")}
                 </Link>
                 <Link
                   href="/chemist"
-                  onClick={() => {
-                    loginAsChemist("chem_1");
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={() => setMobileMenuOpen(false)}
                   className={`btn-base text-xs py-1.5 ${
                     role === "chemist" ? "btn-forest" : "btn-outline"
                   }`}
                 >
                   {t("common.chemist")}
-                </Link>
-                <Link
-                  href="/admin"
-                  onClick={() => {
-                    loginAsAdmin();
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`btn-base text-xs py-1.5 ${
-                    role === "admin" ? "btn-forest" : "btn-outline"
-                  }`}
-                >
-                  {t("common.admin")}
                 </Link>
               </div>
             </div>

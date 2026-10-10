@@ -22,6 +22,7 @@ export function ChemistRegisterModal({ isOpen, onClose }: Props) {
   const [is24Hours, setIs24Hours] = useState(false);
   const [openHour, setOpenHour] = useState("09:00");
   const [closeHour, setCloseHour] = useState("22:00");
+  const [pin, setPin] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
   if (!isOpen) return null;
@@ -40,6 +41,8 @@ export function ChemistRegisterModal({ isOpen, onClose }: Props) {
       shopName,
       ownerName,
       phone,
+      pin: pin.trim() || "123456",
+      isSynthetic: false,
       drugLicenceNumber: licenceNo,
       address,
       town,
@@ -57,11 +60,8 @@ export function ChemistRegisterModal({ isOpen, onClose }: Props) {
       createdAt: new Date().toISOString(),
     };
 
-    // Save chemist to DB
-    const existing = db.getChemists();
-    existing.push(newChemist);
-    localStorage.setItem("msf_chemists", JSON.stringify(existing));
-
+    // Save chemist to DB and notify all tabs
+    db.addChemist(newChemist, "self-registration");
     setSubmitted(true);
   };
 
@@ -143,6 +143,22 @@ export function ChemistRegisterModal({ isOpen, onClose }: Props) {
                   className="input-base w-full font-mono text-xs"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">
+                Create 6-Digit Login PIN / Password *
+              </label>
+              <input
+                type="password"
+                required
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="6-digit PIN (e.g. 123456)"
+                className="input-base w-full font-mono text-xs"
+              />
+              <span className="text-[11px] text-ink-muted">You will use this PIN along with your phone number to log into your terminal once verified.</span>
             </div>
 
             <div>
