@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isCustomer() {
+      return isAuthenticated() && request.auth.token.role == 'customer';
+    }
+
+    function isChemist() {
+      return isAuthenticated() && request.auth.token.role == 'chemist';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (request.auth.token.role == 'admin' || request.auth.token.role == 'super_admin');
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Chemists Collection
+    match /chemists/{chemistId} {
+      // Anyone can read verified chemists; pending chemists only by owner or admin
+      allow read: if resource.data.status == 'verified' || isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated();
+      // Only admin can verify; chemist can toggle hours and openNow
+      allow update: if (isOwner(resource.data.userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'metrics'])) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Medicines Collection (Public catalog)
+    match /medicines/{medicineId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Medicine Requests Collection
+    match /requests/{requestId} {
+      // Customer reads their own request; routed chemists read open requests
+      allow read: if isOwner(resource.data.customerId) || (isChemist() && request.auth.token.chemistId in resource.data.notifiedChemistIds) || isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isOwner(resource.data.customerId) || isAdmin();
+      allow delete: if isOwner(resource.data.customerId) || isAdmin();
+
+      // Chemist Responses Subcollection
+      match /responses/{responseId} {
+        allow read: if isOwner(get(/databases/$(database)/documents/requests/$(requestId)).data.customerId) || (isChemist() && resource.data.chemistId == request.auth.token.chemistId) || isAdmin();
+        allow create: if isChemist();
+        allow update: if isChemist() && resource.data.chemistId == request.auth.token.chemistId;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Audit Logs Collection
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // Append-only
+    }
+
+    // System Settings Collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

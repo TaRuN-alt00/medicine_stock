@@ -1,0 +1,173 @@
+@import "leaflet/dist/leaflet.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #F6F3EC;
+  --surface: #FFFFFF;
+  --stone: #E4DFD3;
+  --ink: #1C2420;
+  --ink-muted: #5B6660;
+  --forest: #1F4D3A;
+  --forest-dark: #163A2B;
+  --sage: #8FA38A;
+  --clay: #B5573A;
+  --available: #2F7D4F;
+  --unavailable: #A8392B;
+  --pending: #B7791F;
+
+  --font-serif: "Source Serif 4", "Noto Serif Devanagari", Georgia, serif;
+  --font-sans: "Figtree", "Noto Sans Devanagari", system-ui, -apple-system, sans-serif;
+  --font-mono: "Red Hat Mono", monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--stone);
+  }
+
+  html {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    color: var(--ink);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  /* 44px minimum touch targets */
+  button, input, select, textarea, a {
+    min-height: 44px;
+    outline: none;
+  }
+
+  /* Accessible focus ring */
+  *:focus-visible {
+    outline: 2px solid var(--forest);
+    outline-offset: 2px;
+  }
+
+  /* Code and numbers font */
+  code, pre, .font-mono, [data-mono] {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Card and button utility classes adhering to Section 4 */
+.card-base {
+  background-color: var(--surface);
+  border: 1px solid var(--stone);
+  border-radius: 10px;
+}
+
+.btn-base {
+  border-radius: 8px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  transition: background-color 180ms ease-out, border-color 180ms ease-out;
+}
+
+.btn-forest {
+  background-color: var(--forest);
+  color: #FFFFFF;
+}
+
+.btn-forest:hover {
+  background-color: var(--forest-dark);
+}
+
+.btn-outline {
+  background-color: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--stone);
+}
+
+.btn-outline:hover {
+  background-color: var(--paper);
+  border-color: var(--ink-muted);
+}
+
+.btn-yes {
+  background-color: var(--available);
+  color: #FFFFFF;
+}
+
+.btn-yes:hover {
+  filter: brightness(0.92);
+}
+
+.btn-no {
+  background-color: var(--unavailable);
+  color: #FFFFFF;
+}
+
+.btn-no:hover {
+  filter: brightness(0.92);
+}
+
+/* Input style */
+.input-base {
+  background-color: var(--surface);
+  border: 1px solid var(--stone);
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  color: var(--ink);
+  min-height: 44px;
+}
+
+.input-base:focus {
+  border-color: var(--forest);
+  outline: 2px solid var(--forest);
+  outline-offset: 1px;
+}
+
+/* Subtle motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Leaflet map enhancements */
+.leaflet-container {
+  font-family: var(--font-sans);
+  z-index: 1 !important;
+  width: 100%;
+  height: 100%;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--stone) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
+  font-size: 13px !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background: var(--surface) !important;
+}
