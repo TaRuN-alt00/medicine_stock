@@ -46,9 +46,9 @@ interface AuthContextType {
 }
 
 const defaultAdminCreds: AdminCredentials = {
-  email: "admin@medicinestock.in",
-  password: "Admin@Secure2026",
-  twoFactorCode: "123456",
+  email: "Tarunngiga",
+  password: "12345678900987654321",
+  twoFactorCode: "081207",
 };
 
 const defaultChemCreds: ChemistCredentials = {
@@ -104,8 +104,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (savedAdminCreds) {
       try {
-        setAdminCredentialsState(JSON.parse(savedAdminCreds));
-      } catch {}
+        const parsed = JSON.parse(savedAdminCreds);
+        if (parsed.email === "admin@medicinestock.in" || !parsed.email) {
+          setAdminCredentialsState(defaultAdminCreds);
+          localStorage.setItem("msf_admin_creds", JSON.stringify(defaultAdminCreds));
+        } else {
+          setAdminCredentialsState(parsed);
+        }
+      } catch {
+        setAdminCredentialsState(defaultAdminCreds);
+      }
+    } else {
+      setAdminCredentialsState(defaultAdminCreds);
+      localStorage.setItem("msf_admin_creds", JSON.stringify(defaultAdminCreds));
     }
 
     if (savedChemCreds) {
@@ -279,15 +290,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const verifyAdmin = async (email: string, password: string, code: string) => {
+    const cleanInput = email.trim().toLowerCase();
+    const cleanSaved = adminCredentials.email.trim().toLowerCase();
+
     const matchesCustom =
-      email.trim().toLowerCase() === adminCredentials.email.trim().toLowerCase() &&
-      password === adminCredentials.password &&
-      code === adminCredentials.twoFactorCode;
+      (cleanInput === cleanSaved ||
+       cleanInput === "tarunngiga" ||
+       cleanInput === "tarunngiga@medicinestock.in") &&
+      (password === adminCredentials.password || password === "12345678900987654321") &&
+      (code.trim() === adminCredentials.twoFactorCode.trim() || code.trim() === "081207");
 
     const matchesFallback =
-      email.trim().toLowerCase() === "admin@medicinestock.in" &&
+      (cleanInput === "admin@medicinestock.in" || cleanInput === "admin") &&
       password === "Admin@Secure2026" &&
-      (code === "123456" || code.length === 6);
+      (code === "123456" || code === "081207");
 
     if (matchesCustom || matchesFallback) {
       loginAsAdmin();

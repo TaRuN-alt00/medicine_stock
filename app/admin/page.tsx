@@ -39,7 +39,7 @@ export default function AdminPortalPage() {
   const { t } = useI18n();
 
   // Admin login form states
-  const [loginEmail, setLoginEmail] = useState(adminCredentials.email || "admin@medicinestock.in");
+  const [loginEmail, setLoginEmail] = useState(adminCredentials.email || "Tarunngiga");
   const [loginPassword, setLoginPassword] = useState("");
   const [login2FA, setLogin2FA] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -208,14 +208,14 @@ export default function AdminPortalPage() {
         <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-ink-muted mb-1">
-              Admin Email Address *
+              Admin Username / Email *
             </label>
             <input
-              type="email"
+              type="text"
               required
               value={loginEmail}
               onChange={(e) => setLoginEmail(e.target.value)}
-              placeholder="admin@medicinestock.in"
+              placeholder="Tarunngiga"
               className="input-base w-full text-xs font-mono"
             />
           </div>
@@ -236,8 +236,8 @@ export default function AdminPortalPage() {
 
           <div>
             <label className="block text-xs font-semibold text-ink-muted mb-1 flex items-center justify-between">
-              <span>2FA Security Code *</span>
-              <span className="text-[10px] text-forest font-mono">Default: 123456</span>
+              <span>2FA (F2f) Security Code *</span>
+              <span className="text-[10px] text-forest font-mono">Code: 081207</span>
             </label>
             <input
               type="text"
@@ -260,11 +260,11 @@ export default function AdminPortalPage() {
         </form>
 
         <div className="p-3 bg-paper border border-stone rounded-btn text-[11px] text-ink-muted space-y-1">
-          <div className="font-semibold text-ink">Default Administrative Credentials:</div>
-          <div>Email: <span className="font-mono text-forest">admin@medicinestock.in</span></div>
-          <div>Password: <span className="font-mono text-forest">Admin@Secure2026</span></div>
-          <div>2FA Code: <span className="font-mono text-forest">123456</span></div>
-          <div className="pt-1 text-[10px] text-ink-muted italic">You can change these anytime in the Password & Security tab once logged in.</div>
+          <div className="font-semibold text-ink">Admin Credentials:</div>
+          <div>Username: <span className="font-mono text-forest font-bold">Tarunngiga</span></div>
+          <div>Password: <span className="font-mono text-forest font-bold">12345678900987654321</span></div>
+          <div>2FA (F2f) Code: <span className="font-mono text-forest font-bold">081207</span></div>
+          <div className="pt-1 text-[10px] text-ink-muted italic">You can also change these credentials in the Password & Security tab.</div>
         </div>
       </div>
     );
@@ -648,10 +648,10 @@ export default function AdminPortalPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-ink-muted mb-1">
-                    Admin Email Address
+                    Admin Username / Email
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
