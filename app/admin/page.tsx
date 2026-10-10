@@ -39,7 +39,7 @@ export default function AdminPortalPage() {
   const { t } = useI18n();
 
   // Admin login form states
-  const [loginEmail, setLoginEmail] = useState(adminCredentials.email || "Tarunngiga");
+  const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [login2FA, setLogin2FA] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -215,7 +215,7 @@ export default function AdminPortalPage() {
               required
               value={loginEmail}
               onChange={(e) => setLoginEmail(e.target.value)}
-              placeholder="Tarunngiga"
+              placeholder="Enter admin username"
               className="input-base w-full text-xs font-mono"
             />
           </div>
@@ -235,9 +235,8 @@ export default function AdminPortalPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-ink-muted mb-1 flex items-center justify-between">
-              <span>2FA (F2f) Security Code *</span>
-              <span className="text-[10px] text-forest font-mono">Code: 081207</span>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">
+              2FA (F2f) Security Code *
             </label>
             <input
               type="text"
@@ -245,7 +244,7 @@ export default function AdminPortalPage() {
               maxLength={6}
               value={login2FA}
               onChange={(e) => setLogin2FA(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="6-digit 2FA code"
+              placeholder="Enter 6-digit code"
               className="input-base w-full font-mono text-center tracking-widest text-sm"
             />
           </div>
@@ -258,14 +257,6 @@ export default function AdminPortalPage() {
             <span>Authenticate & Access Admin</span>
           </button>
         </form>
-
-        <div className="p-3 bg-paper border border-stone rounded-btn text-[11px] text-ink-muted space-y-1">
-          <div className="font-semibold text-ink">Admin Credentials:</div>
-          <div>Username: <span className="font-mono text-forest font-bold">Tarunngiga</span></div>
-          <div>Password: <span className="font-mono text-forest font-bold">12345678900987654321</span></div>
-          <div>2FA (F2f) Code: <span className="font-mono text-forest font-bold">081207</span></div>
-          <div className="pt-1 text-[10px] text-ink-muted italic">You can also change these credentials in the Password & Security tab.</div>
-        </div>
       </div>
     );
   }
