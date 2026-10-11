@@ -196,7 +196,7 @@ class DatabaseStore {
   // Request & Fan-Out methods
   public createRequest(data: Omit<MedicineRequest, "id" | "createdAt" | "expiresAt" | "status" | "patientOutcome" | "notifiedChemistIds">): MedicineRequest {
     const now = new Date();
-    const expires = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins expiry
+    const expires = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes active window
 
     // Fan-out logic: find open, verified chemists within radius
     const nearbyChemists = this.chemists.filter((chem) => {
@@ -229,7 +229,20 @@ class DatabaseStore {
   }
 
   public getIncomingRequestsForChemist(chemistId: string): MedicineRequest[] {
-    return this.requests.filter((r) => r.status === "open" && r.notifiedChemistIds.includes(chemistId));
+    const now = new Date();
+    // A chemist sees this request as long as:
+    // 1. They were in the notified list
+    // 2. The 10-minute inquiry window has not expired
+    // 3. THIS chemist has not already responded to this request
+    // Multiple chemists can answer YES or NO independently!
+    return this.requests.filter((r) => {
+      const isNotified = r.notifiedChemistIds.includes(chemistId);
+      const isNotExpired = new Date(r.expiresAt).getTime() > now.getTime();
+      const hasResponded = this.responses.some(
+        (resp) => resp.requestId === r.id && resp.chemistId === chemistId
+      );
+      return isNotified && isNotExpired && !hasResponded;
+    });
   }
 
   public respondToRequest(data: {
@@ -254,7 +267,7 @@ class DatabaseStore {
     );
 
     const newResponse: RequestResponse = {
-      id: "resp_" + Date.now(),
+      id: "resp_" + Date.now() + "_" + data.chemistId,
       requestId: data.requestId,
       chemistId: data.chemistId,
       chemistShopName: chemist?.shopName || "Local Chemist",
@@ -269,12 +282,47 @@ class DatabaseStore {
 
     this.responses.unshift(newResponse);
 
-    if (request && data.answer === "yes") {
-      request.status = "answered";
+    // Reward promptness: reset consecutive misses and boost reply rate
+    if (chemist) {
+      chemist.metrics.consecutiveMisses = 0;
+      chemist.metrics.replyRate = Math.min(100, chemist.metrics.replyRate + 1);
     }
 
     this.persist();
     return newResponse;
+  }
+
+  public handleChemistTimeout(chemistId: string, requestId: string) {
+    const chemist = this.chemists.find((c) => c.id === chemistId);
+    const request = this.requests.find((r) => r.id === requestId);
+    if (!chemist) return;
+
+    // Negative points penalty for missing the 10-minute response window
+    chemist.metrics.consecutiveMisses = (chemist.metrics.consecutiveMisses || 0) + 1;
+    chemist.metrics.replyRate = Math.max(10, chemist.metrics.replyRate - 5);
+
+    // Record timeout response so request is removed from this chemist's terminal
+    this.responses.push({
+      id: "resp_timeout_" + Date.now() + "_" + chemistId,
+      requestId,
+      chemistId,
+      chemistShopName: chemist.shopName,
+      chemistPhone: chemist.phone,
+      chemistDistanceKm: 1.0,
+      answer: "no",
+      respondedAt: new Date().toISOString(),
+      validUntil: new Date().toISOString(),
+      isLate: true,
+    });
+
+    this.addAuditLog(
+      "system",
+      `[Penalty] Chemist "${chemist.shopName}" missed 10-minute inquiry window for "${request?.medicineQuery || 'Medicine'}". Reply rate reduced to ${chemist.metrics.replyRate}%, Consecutive Misses: ${chemist.metrics.consecutiveMisses}.`,
+      "chemist",
+      chemist.id
+    );
+
+    this.persist();
   }
 
   public undoResponse(requestId: string, chemistId: string) {

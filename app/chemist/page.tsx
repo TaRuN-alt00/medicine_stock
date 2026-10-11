@@ -60,8 +60,10 @@ export default function ChemistPortalPage() {
   // Terminal active states
   const [incomingRequests, setIncomingRequests] = useState<MedicineRequest[]>([]);
   const [undoToast, setUndoToast] = useState<{ id: string; seconds: number; requestId: string } | null>(null);
+  const [penaltyToast, setPenaltyToast] = useState<{ query: string; penalty: string } | null>(null);
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<string>("default");
+  const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -82,7 +84,7 @@ export default function ChemistPortalPage() {
 
     const updateRequests = () => {
       const reqs = db.getIncomingRequestsForChemist(activeChemist.id);
-      if (reqs.length > 0) {
+      if (reqs.length > incomingRequests.length) {
         playChemistAlertSound();
       }
       setIncomingRequests(reqs);
@@ -92,6 +94,31 @@ export default function ChemistPortalPage() {
     const unsubscribe = db.subscribe(updateRequests);
     return () => unsubscribe();
   }, [activeChemist]);
+
+  // Live 1-second interval for 10-minute inquiry countdowns & auto-penalization
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setCurrentTimeMs(now);
+
+      if (activeChemist && incomingRequests.length > 0) {
+        incomingRequests.forEach((req) => {
+          const expiresAtMs = new Date(req.expiresAt).getTime();
+          if (now >= expiresAtMs) {
+            // 10 minutes passed without reply! Apply penalty and remove
+            db.handleChemistTimeout(activeChemist.id, req.id);
+            setPenaltyToast({
+              query: req.medicineQuery,
+              penalty: `10-minute inquiry window closed without response! Reliability score penalized (-5%).`,
+            });
+            setTimeout(() => setPenaltyToast(null), 7000);
+          }
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeChemist, incomingRequests]);
 
   // Undo countdown timer
   useEffect(() => {
@@ -599,6 +626,24 @@ export default function ChemistPortalPage() {
         </div>
       )}
 
+      {/* Penalty Toast Notification if 10-minute timer expires */}
+      {penaltyToast && (
+        <div className="p-4 bg-unavailable text-white rounded-card shadow-dropdown flex items-center justify-between gap-4 animate-slideUp">
+          <div className="text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-white" />
+            <span>
+              <strong>10-Min Timer Expired:</strong> &quot;{penaltyToast.query}&quot; — {penaltyToast.penalty}
+            </span>
+          </div>
+          <button
+            onClick={() => setPenaltyToast(null)}
+            className="text-xs text-white/80 hover:text-white underline font-bold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Undo Toast Notification */}
       {undoToast && (
         <div className="p-4 bg-ink text-white rounded-card shadow-dropdown flex items-center justify-between gap-4 animate-slideUp">
@@ -634,7 +679,7 @@ export default function ChemistPortalPage() {
             className="btn-base btn-outline text-xs px-3 py-1.5 flex items-center gap-1 font-semibold text-forest"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Simulate Test Inquiry</span>
+            <span>Simulate 10-Min Patient Inquiry</span>
           </button>
         </div>
 
@@ -643,7 +688,7 @@ export default function ChemistPortalPage() {
             <Clock className="w-8 h-8 text-ink-muted mx-auto" />
             <h3 className="font-serif font-bold text-base text-ink">No pending inquiries</h3>
             <p className="text-xs text-ink-muted max-w-sm mx-auto">
-              You are all caught up. When a patient searches for medicine in your area, an alert will ring here.
+              You are all caught up. When a patient searches for medicine in your area, an alert will ring here with a 10-minute response timer.
             </p>
             <button
               onClick={sendTestInquiry}
@@ -654,64 +699,94 @@ export default function ChemistPortalPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {incomingRequests.map((req) => (
-              <div
-                key={req.id}
-                className="card-base p-6 bg-surface border-2 border-stone space-y-5 shadow-soft"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[11px] uppercase tracking-wider font-bold text-forest flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-available animate-ping"></span>
-                      {t("chemist.liveAlert")}
-                    </span>
-                    <h3 className="font-serif text-2xl font-bold text-ink">
-                      {req.medicineQuery}
-                    </h3>
-                    {req.matchedMedicine && (
-                      <p className="text-xs text-ink-muted">
-                        Salt: <span className="font-medium text-ink">{req.matchedMedicine.saltComposition}</span> • Form:{" "}
-                        <span className="font-mono">{req.matchedMedicine.form}</span>
-                      </p>
-                    )}
+            {incomingRequests.map((req) => {
+              const remainingSec = Math.max(0, Math.floor((new Date(req.expiresAt).getTime() - currentTimeMs) / 1000));
+              const mins = Math.floor(remainingSec / 60);
+              const secs = remainingSec % 60;
+              const timerStr = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+              const isUrgent = remainingSec < 120;
+              const isWarning = remainingSec < 300;
+
+              return (
+                <div
+                  key={req.id}
+                  className="card-base p-6 bg-surface border-2 border-stone space-y-4 shadow-soft"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[11px] uppercase tracking-wider font-bold text-forest flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-available animate-ping"></span>
+                        {t("chemist.liveAlert")}
+                      </span>
+                      <h3 className="font-serif text-2xl font-bold text-ink">
+                        {req.medicineQuery}
+                      </h3>
+                      {req.matchedMedicine && (
+                        <p className="text-xs text-ink-muted">
+                          Salt: <span className="font-medium text-ink">{req.matchedMedicine.saltComposition}</span> • Form:{" "}
+                          <span className="font-mono">{req.matchedMedicine.form}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs font-mono px-2 py-1 bg-paper border border-stone rounded text-ink font-semibold">
+                        ~0.8 km away
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="text-right">
-                    <span className="text-xs font-mono px-2 py-1 bg-paper border border-stone rounded text-ink font-semibold">
-                      ~0.8 km away
+                  {/* 10-Minute Response Window Timer */}
+                  <div
+                    className={`p-2.5 rounded-btn border text-xs font-mono font-bold flex items-center justify-between ${
+                      isUrgent
+                        ? "bg-unavailable/10 border-unavailable text-unavailable animate-pulse"
+                        : isWarning
+                        ? "bg-pending/10 border-pending text-pending"
+                        : "bg-paper border-stone text-forest"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 font-sans font-semibold text-ink">
+                      <Clock className="w-4 h-4 text-forest" />
+                      <span>10-Minute Response Window:</span>
                     </span>
+                    <span>⏳ {timerStr} remaining</span>
+                  </div>
+
+                  {req.matchedMedicine?.prescriptionRequired && (
+                    <div className="p-2.5 bg-paper rounded-btn border border-stone text-xs text-ink font-medium flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-forest shrink-0" />
+                      <span>{t("chemist.prescriptionRequiredBadge")}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-ink-muted italic">
+                    * Respond Yes or No. If no reply is submitted within 10 minutes, this inquiry will be removed and your shop reliability score will be penalized.
+                  </p>
+
+                  {/* The Two Huge Action Buttons */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button
+                      onClick={() => handleReply(req.id, "yes")}
+                      className="btn-base btn-yes text-base md:text-lg font-bold py-4 min-h-[56px] shadow-sm flex items-center justify-center gap-2"
+                      aria-label="Confirm medicine is available"
+                    >
+                      <CheckCircle2 className="w-6 h-6" />
+                      <span>{t("chemist.btnYes")}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleReply(req.id, "no")}
+                      className="btn-base btn-no text-base md:text-lg font-bold py-4 min-h-[56px] shadow-sm flex items-center justify-center gap-2"
+                      aria-label="Mark medicine out of stock"
+                    >
+                      <XCircle className="w-6 h-6" />
+                      <span>{t("chemist.btnNo")}</span>
+                    </button>
                   </div>
                 </div>
-
-                {req.matchedMedicine?.prescriptionRequired && (
-                  <div className="p-2.5 bg-paper rounded-btn border border-stone text-xs text-ink font-medium flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-forest shrink-0" />
-                    <span>{t("chemist.prescriptionRequiredBadge")}</span>
-                  </div>
-                )}
-
-                {/* The Two Huge Action Buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    onClick={() => handleReply(req.id, "yes")}
-                    className="btn-base btn-yes text-base md:text-lg font-bold py-4 min-h-[56px] shadow-sm flex items-center justify-center gap-2"
-                    aria-label="Confirm medicine is available"
-                  >
-                    <CheckCircle2 className="w-6 h-6" />
-                    <span>{t("chemist.btnYes")}</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleReply(req.id, "no")}
-                    className="btn-base btn-no text-base md:text-lg font-bold py-4 min-h-[56px] shadow-sm flex items-center justify-center gap-2"
-                    aria-label="Mark medicine out of stock"
-                  >
-                    <XCircle className="w-6 h-6" />
-                    <span>{t("chemist.btnNo")}</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

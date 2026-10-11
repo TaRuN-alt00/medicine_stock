@@ -35,7 +35,7 @@ function SearchPageContent() {
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
   const [activeRequest, setActiveRequest] = useState<MedicineRequest | null>(null);
   const [responses, setResponses] = useState<RequestResponse[]>([]);
-  const [countdownSeconds, setCountdownSeconds] = useState(180); // 3 minutes initial
+  const [countdownSeconds, setCountdownSeconds] = useState(600); // 10 minutes live window
   const [autoWidened, setAutoWidened] = useState(false);
   const [feedbackGiven, setFeedbackGiven] = useState(false);
 
@@ -186,7 +186,7 @@ function SearchPageContent() {
               Waiting for nearby open chemists to answer...
             </h3>
             <p className="text-xs text-ink-muted max-w-sm mx-auto leading-relaxed">
-              We have pinged verified shops in your radius. Chemist replies will appear here immediately as they tap.
+              Inquiry broadcast to verified shops in your radius (10-minute active window). Chemist replies will appear here in real-time as they tap Yes.
             </p>
             <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
               <button
@@ -199,21 +199,41 @@ function SearchPageContent() {
                     });
                   }
                 }}
-                className="btn-base btn-forest text-xs px-4"
+                className="btn-base btn-forest text-xs px-3 py-1.5"
               >
-                ⚡ Test: Simulate Chemist taps &quot;Yes&quot;
+                ⚡ Test: Chemist 1 (Sharma Medicos) taps &quot;Yes&quot;
+              </button>
+              <button
+                onClick={() => {
+                  if (activeRequest) {
+                    db.respondToRequest({
+                      requestId: activeRequest.id,
+                      chemistId: "chem_2",
+                      answer: "yes",
+                    });
+                  }
+                }}
+                className="btn-base btn-outline text-xs px-3 py-1.5 text-forest font-semibold"
+              >
+                ⚡ Test: Chemist 2 (Gupta Pharmacy) taps &quot;Yes&quot;
               </button>
               <Link
                 href="/chemist"
-                className="btn-base btn-outline text-xs px-4"
+                className="btn-base btn-outline text-xs px-3 py-1.5"
               >
-                Or Open Chemist Portal in New Tab →
+                Open Real Chemist Terminal →
               </Link>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            {confirmedResponses.map((resp) => (
+            {confirmedResponses.length > 1 && (
+              <div className="p-3 bg-available/10 border border-available/30 text-forest rounded-btn text-xs font-semibold flex items-center justify-between">
+                <span>🎉 {confirmedResponses.length} pharmacies confirmed stock is available! Compare distance and choose nearest:</span>
+              </div>
+            )}
+
+            {confirmedResponses.map((resp, idx) => (
               <div
                 key={resp.id}
                 className="card-base p-5 bg-surface border-2 border-available space-y-4 shadow-soft animate-fadeIn"
@@ -221,6 +241,9 @@ function SearchPageContent() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-forest text-white text-[11px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
                       <h3 className="font-serif font-bold text-lg text-ink">
                         {resp.chemistShopName}
                       </h3>
@@ -265,6 +288,26 @@ function SearchPageContent() {
                 </div>
               </div>
             ))}
+
+            {/* Quick action to test adding another chemist's confirmation */}
+            <div className="pt-2 flex items-center justify-end gap-2 text-xs">
+              <span className="text-ink-muted text-[11px]">Test multi-reply:</span>
+              <button
+                onClick={() => {
+                  if (activeRequest) {
+                    const chemId = confirmedResponses.length === 1 ? "chem_2" : "chem_3";
+                    db.respondToRequest({
+                      requestId: activeRequest.id,
+                      chemistId: chemId,
+                      answer: "yes",
+                    });
+                  }
+                }}
+                className="btn-base btn-outline text-[11px] px-2.5 py-1 text-forest font-semibold"
+              >
+                + Simulate Another Pharmacy Confirms &quot;Yes&quot;
+              </button>
+            </div>
           </div>
         )}
       </section>
